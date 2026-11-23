@@ -5,29 +5,52 @@ import requests
 GROQ_API_KEY = os.environ["GROQ_API_KEY"]
 BUFFER_API_KEY = os.environ["BUFFER_API_KEY"]
 BUFFER_CHANNEL_ID = os.environ["BUFFER_CHANNEL_ID"]
+HISTORY_FILE = "history.json"
 
-def generate_project_idea():
+def load_history():
+    if os.path.exists(HISTORY_FILE):
+        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
+
+def save_history(history):
+    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+        json.dump(history, f, ensure_ascii=False, indent=2)
+
+def generate_project_idea(past_projects):
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
+    
+    # بنبعت آخر 50 مشروع اتعملوا عشان Groq مايكررهمش
+    avoid_list = ", ".join(past_projects[-50:]) if past_projects else "None"
+
     payload = {
         "model": "openai/gpt-oss-120b",
         "response_format": {"type": "json_object"},
         "messages": [
             {
                 "role": "system",
-                "content": "You are a DIY electronics expert. Always respond with valid JSON only."
+                "content": (
+                    "You are a Pinterest SEO specialist and DIY electronics expert. "
+                    "Always respond with valid JSON only. Focus on high-search-volume keywords "
+                    "like Arduino, ESP32, DIY electronics, circuit, robotics, smart home, and gadgets."
+                )
             },
             {
                 "role": "user",
                 "content": (
-                    "Generate 1 cool DIY electronics project idea for a Pinterest Pin. "
-                    "Return JSON with exact keys: "
-                    "'title' (catchy, max 80 chars), "
-                    "'description' (engaging with hashtags and brief steps, max 400 chars), "
-                    "'image_prompt' (detailed visual description for a vertical 2:3 Pinterest photo of the electronics project on a workbench)."
+                    f"Generate 1 unique, viral DIY electronics project idea for a Pinterest Pin. "
+                    f"DO NOT repeat or make anything similar to these past projects: [{avoid_list}].\n\n"
+                    "Return JSON with exact keys:\n"
+                    "- 'title': SEO-optimized catchy title with strong keywords (max 85 chars).\n"
+                    "- 'hook': 1-2 engaging SEO-rich sentences explaining what the project does and why it's awesome.\n"
+                    "- 'components': An array of 4 to 6 exact electronic components needed (e.g. 'ESP32 Board', 'HC-SR04 Ultrasonic Sensor').\n"
+                    "- 'cta': A friendly, engaging sentence encouraging the viewer to Save this pin and Follow the profile for daily DIY electronics ideas.\n"
+                    "- 'hashtags': A string of 5 to 7 high-ranking Pinterest hashtags (e.g. '#DIYElectronics #ArduinoProjects #ESP32').\n"
+                    "- 'image_prompt': Detailed visual description for a vertical 2:3 aesthetic Pinterest photo of the finished electronics project on a clean workbench, studio lighting, photorealistic, no text."
                 )
             }
         ]
@@ -39,7 +62,31 @@ def generate_project_idea():
     content = res.json()["choices"][0]["message"]["content"]
     return json.loads(content)
 
-def publish_to_buffer(title, description, image_url):
+def generate_and_host_image(image_prompt):
+    prompt_encoded = requests.utils.quote(image_prompt)
+    pollinations_url = f"https://image.pollinations.ai/prompt/{prompt_encoded}?width=1000&height=1500&nologo=true"
+    
+    print("Downloading generated image...")
+    img_res = requests.get(pollinations_url, timeout=60)
+    img_res.raise_for_status()
+
+    with open("pin.jpg", "wb") as f:
+        f.write(img_res.content)
+
+    print("Uploading image to host...")
+    with open("pin.jpg", "rb") as f:
+        upload_res = requests.post(
+            "https://catbox.moe/user/api.php",
+            data={"reqtype": "fileupload"},
+            files={"fileToUpload": ("pin.jpg", f, "image/jpeg")},
+            timeout=60
+        )
+    upload_res.raise_for_status()
+    direct_url = upload_res.text.strip()
+    print("Direct Image URL:", direct_url)
+    return direct_url
+
+def publish_to_buffer(full_text, image_url):
     url = "https://api.buffer.com"
     headers = {
         "Authorization": f"Bearer {BUFFER_API_KEY}",
@@ -63,7 +110,7 @@ def publish_to_buffer(title, description, image_url):
     variables = {
         "input": {
             "channelId": BUFFER_CHANNEL_ID,
-            "text": f"{title}\n\n{description}",
+            "text": full_text,
             "schedulingType": "automatic",
             "mode": "addToQueue",
             "assets": [
@@ -79,17 +126,37 @@ def publish_to_buffer(title, description, image_url):
     if not res.ok:
         print("Buffer API Error:", res.text)
     res.raise_for_status()
-    print("Buffer Response:", json.dumps(res.json(), ensure_ascii=False, indent=2))
+    
+    data = res.json()
+    print("Buffer Response:", json.dumps(data, ensure_ascii=False, indent=2))
+    
+    # التأكد إن النشر نجح فعلاً قبل ما نحفظ المشروع في الهيستوري
+    post_result = data.get("data", {}).get("createPost", {})
+    if "post" in post_result:
+        return True
+    return False
 
 if __name__ == "__main__":
-    project = generate_project_idea()
+    history = load_history()
+    project = generate_project_idea(history)
     print("Generated Project:", project["title"])
 
-    prompt_encoded = requests.utils.quote(project["image_prompt"])
-    image_url = f"https://image.pollinations.ai/prompt/{prompt_encoded}?width=1000&height=1500&nologo=true"
-
-    publish_to_buffer(
-        title=project["title"],
-        description=project["description"],
-        image_url=image_url
+    # تنسيق الوصف بشكل احترافي ومرتب للسيو
+    components_text = "\n".join([f"• {item}" for item in project["components"]])
+    full_pin_text = (
+        f"{project['title']}\n\n"
+        f"{project['hook']}\n\n"
+        f"🔧 Components Needed:\n"
+        f"{components_text}\n\n"
+        f"👉 {project['cta']}\n\n"
+        f"{project['hashtags']}"
     )
+
+    direct_image_url = generate_and_host_image(project["image_prompt"])
+
+    if publish_to_buffer(full_pin_text, direct_image_url):
+        history.append(project["title"])
+        save_history(history)
+        print("Project saved to history.json!")
+    else:
+        raise Exception("Failed to publish to Buffer, history not updated.")
