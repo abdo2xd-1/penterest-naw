@@ -2,24 +2,42 @@ import os
 import json
 import requests
 
-GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
+GROQ_API_KEY = os.environ["GROQ_API_KEY"]
 BUFFER_API_KEY = os.environ["BUFFER_API_KEY"]
 BUFFER_CHANNEL_ID = os.environ["BUFFER_CHANNEL_ID"]
 
 def generate_project_idea():
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
-    prompt = (
-        "Generate 1 cool DIY electronics project idea for a Pinterest Pin. "
-        "Return ONLY valid JSON with keys: "
-        "'title' (catchy, max 80 chars), "
-        "'description' (engaging with hashtags and brief steps, max 400 chars), "
-        "'image_prompt' (detailed visual description for a vertical 2:3 Pinterest photo of the electronics project on a workbench)."
-    )
-    res = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=30)
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": "llama-3.3-70b-versatile",
+        "response_format": {"type": "json_object"},
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are a DIY electronics expert. Always respond with valid JSON only."
+            },
+            {
+                "role": "user",
+                "content": (
+                    "Generate 1 cool DIY electronics project idea for a Pinterest Pin. "
+                    "Return JSON with exact keys: "
+                    "'title' (catchy, max 80 chars), "
+                    "'description' (engaging with hashtags and brief steps, max 400 chars), "
+                    "'image_prompt' (detailed visual description for a vertical 2:3 Pinterest photo of the electronics project on a workbench)."
+                )
+            }
+        ]
+    }
+    res = requests.post(url, headers=headers, json=payload, timeout=30)
+    if not res.ok:
+        print("Groq API Error:", res.text)
     res.raise_for_status()
-    raw_text = res.json()["candidates"][0]["content"]["parts"][0]["text"]
-    clean_json = raw_text.replace("```json", "").replace("```", "").strip()
-    return json.loads(clean_json)
+    content = res.json()["choices"][0]["message"]["content"]
+    return json.loads(content)
 
 def publish_to_buffer(title, description, image_url):
     url = "https://api.buffer.com"
@@ -47,7 +65,7 @@ def publish_to_buffer(title, description, image_url):
             "channelId": BUFFER_CHANNEL_ID,
             "text": f"{title}\n\n{description}",
             "schedulingType": "automatic",
-            "mode": "addToQueue", # غيّرها لـ "shareNow" لو عايزه ينشر فوراً بدل الجدولة
+            "mode": "addToQueue",
             "assets": [
                 {
                     "image": {
@@ -58,6 +76,8 @@ def publish_to_buffer(title, description, image_url):
         }
     }
     res = requests.post(url, headers=headers, json={"query": query, "variables": variables}, timeout=30)
+    if not res.ok:
+        print("Buffer API Error:", res.text)
     res.raise_for_status()
     print("Buffer Response:", json.dumps(res.json(), ensure_ascii=False, indent=2))
 
