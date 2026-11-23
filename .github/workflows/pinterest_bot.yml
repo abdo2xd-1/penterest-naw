@@ -1,9 +1,12 @@
-name: Electronics Pinterest Bot (Groq + Buffer)
+name: Electronics Pinterest Bot (Groq + Buffer + SEO)
 
 on:
   schedule:
-    - cron: '0 1,1 * * *'
+    - cron: '0 10,18 * * *'
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   create-and-post-pin:
@@ -27,3 +30,11 @@ jobs:
           BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
           BUFFER_CHANNEL_ID: ${{ secrets.BUFFER_CHANNEL_ID }}
         run: python bot.py
+
+      - name: Save Project History
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add history.json
+          git diff --staged --quiet || git commit -m "Update project history"
+          git push
