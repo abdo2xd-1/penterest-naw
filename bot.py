@@ -24,7 +24,6 @@ def generate_project_idea(past_projects):
         "Content-Type": "application/json"
     }
     
-    # بنبعت آخر 50 مشروع اتعملوا عشان Groq مايكررهمش
     avoid_list = ", ".join(past_projects[-50:]) if past_projects else "None"
 
     payload = {
@@ -67,22 +66,25 @@ def generate_and_host_image(image_prompt):
     pollinations_url = f"https://image.pollinations.ai/prompt/{prompt_encoded}?width=1000&height=1500&nologo=true"
     
     print("Downloading generated image...")
-    img_res = requests.get(pollinations_url, timeout=60)
+    headers = {"User-Agent": "Mozilla/5.0"}
+    img_res = requests.get(pollinations_url, headers=headers, timeout=60)
     img_res.raise_for_status()
 
     with open("pin.jpg", "wb") as f:
         f.write(img_res.content)
 
-    print("Uploading image to host...")
+    print("Uploading image to tmpfiles.org...")
     with open("pin.jpg", "rb") as f:
         upload_res = requests.post(
-            "https://catbox.moe/user/api.php",
-            data={"reqtype": "fileupload"},
-            files={"fileToUpload": ("pin.jpg", f, "image/jpeg")},
+            "https://tmpfiles.org/api/v1/upload",
+            files={"file": ("pin.jpg", f, "image/jpeg")},
+            headers=headers,
             timeout=60
         )
     upload_res.raise_for_status()
-    direct_url = upload_res.text.strip()
+    
+    page_url = upload_res.json()["data"]["url"]
+    direct_url = page_url.replace("tmpfiles.org/", "tmpfiles.org/dl/")
     print("Direct Image URL:", direct_url)
     return direct_url
 
@@ -130,7 +132,6 @@ def publish_to_buffer(full_text, image_url):
     data = res.json()
     print("Buffer Response:", json.dumps(data, ensure_ascii=False, indent=2))
     
-    # التأكد إن النشر نجح فعلاً قبل ما نحفظ المشروع في الهيستوري
     post_result = data.get("data", {}).get("createPost", {})
     if "post" in post_result:
         return True
@@ -141,7 +142,6 @@ if __name__ == "__main__":
     project = generate_project_idea(history)
     print("Generated Project:", project["title"])
 
-    # تنسيق الوصف بشكل احترافي ومرتب للسيو
     components_text = "\n".join([f"• {item}" for item in project["components"]])
     full_pin_text = (
         f"{project['title']}\n\n"
