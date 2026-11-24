@@ -1,18 +1,16 @@
 import os
 import re
-import time
 import json
 import random
-import urllib.parse
 import requests
 import cloudinary
 import cloudinary.uploader
-from PIL import Image
 
 GROQ_API_KEY = os.environ["GROQ_API_KEY"]
 BUFFER_API_KEY = os.environ["BUFFER_API_KEY"]
 BUFFER_CHANNEL_ID = os.environ["BUFFER_CHANNEL_ID"]
 CLOUDINARY_URL = os.environ["CLOUDINARY_URL"]
+PEXELS_API_KEY = os.environ["PEXELS_API_KEY"]
 HISTORY_FILE = "history.json"
 
 CATEGORIES = [
@@ -28,17 +26,27 @@ CATEGORIES = [
     "Gesture-Controlled Gadgets"
 ]
 
-PHOTO_STYLES = [
-    "placed on a vibrant solid yellow studio background, bright even studio lighting, clean commercial product photography",
-    "placed on a warm wooden workbench, natural bright daylight, soft blurred background bokeh, authentic maker photography",
-    "placed on a clean minimalist teal matte desk, crisp bright studio lighting, macro product photography"
+FALLBACK_QUERIES = [
+    "arduino circuit board",
+    "electronic circuit board macro",
+    "microchip electronics",
+    "soldering electronics",
+    "robotics electronics",
+    "motherboard microchip",
+    "electronic components wires"
 ]
 
 def load_history():
     if os.path.exists(HISTORY_FILE):
         with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return []
+            data = json.load(f)
+            if isinstance(data, list):
+                return {"projects": data, "photo_ids": []}
+            return {
+                "projects": data.get("projects", []),
+                "photo_ids": data.get("photo_ids", [])
+            }
+    return {"projects": [], "photo_ids": []}
 
 def save_history(history):
     with open(HISTORY_FILE, "w", encoding="utf-8") as f:
@@ -52,7 +60,6 @@ def generate_project_idea(past_projects):
     }
     
     selected_category = random.choice(CATEGORIES)
-    selected_style = random.choice(PHOTO_STYLES)
     avoid_list = ", ".join(past_projects[-50:]) if past_projects else "None"
 
     payload = {
@@ -78,7 +85,7 @@ def generate_project_idea(past_projects):
                     "- 'components': An array of 4 short electronic components (e.g. 'Arduino Uno', 'OLED Display', 'Ultrasonic Sensor', 'Jumper Wires').\n"
                     "- 'cta': 1 short sentence encouraging to Save & Follow for daily DIY electronics (max 70 chars).\n"
                     "- 'hashtags': 4 high-ranking hashtags (e.g. '#DIYElectronics #Arduino #ESP32 #Robotics').\n"
-                    f"- 'image_prompt': Write a sharp, realistic macro DSLR photograph prompt (shot on 85mm lens, shallow depth of field) of the real DIY electronics project featuring a blue Arduino Uno or ESP32 circuit board, green PCB sensor modules, colorful rainbow jumper wires, and a tiny glowing red indicator LED, {selected_style}. Ultra-sharp focus on the electronic pins and chips, photorealistic, no text, no watermark. Do not use forward slashes."
+                    "- 'pexels_query': 2 to 3 simple English search keywords to find a real electronics/circuit photo on Pexels (e.g. 'arduino circuit', 'electronics board', 'soldering microchip', 'robot electronics')."
                 )
             }
         ]
@@ -100,50 +107,48 @@ def generate_project_idea(past_projects):
             print(f"Groq Attempt {attempt + 1} failed:", res.text)
     raise Exception("Failed to generate valid project JSON from Groq after 3 attempts.")
 
-def generate_and_host_image(image_prompt):
-    # تنظيف البرومبت وتشفير كل الرموز بما فيها "/"
-    clean_prompt = image_prompt.replace("/", " ").strip()
-    prompt_encoded = urllib.parse.quote(clean_prompt, safe="")
-    headers = {"User-Agent": "Mozilla/5.0"}
+def fetch_pexels_and_host_image(query, used_photo_ids):
+    headers = {"Authorization": PEXELS_API_KEY}
+    queries_to_try = [query] + random.sample(FALLBACK_QUERIES, len(FALLBACK_QUERIES))
 
-    img_res = None
-    for attempt in range(4):
-        seed = random.randint(1, 999999)
-        model_param = "&model=flux" if attempt < 3 else ""
-        pollinations_url = (
-            f"https://image.pollinations.ai/prompt/{prompt_encoded}"
-            f"?width=768&height=1216{model_param}&seed={seed}&nologo=true"
-        )
-        print(f"Downloading image from Pollinations (Attempt {attempt + 1})...")
-        try:
-            res = requests.get(pollinations_url, headers=headers, timeout=90)
-            content_type = res.headers.get("Content-Type", "")
-            if res.ok and "image" in content_type:
-                img_res = res
-                break
-            print(f"Pollinations returned {res.status_code} ({content_type}), retrying...")
-        except Exception as e:
-            print(f"Pollinations error on attempt {attempt + 1}: {e}")
-        time.sleep(6)
+    selected_photo = None
+    for q in queries_to_try:
+        print(f"Searching Pexels for: '{q}'...")
+        params = {
+            "query": q,
+            "orientation": "portrait",
+            "per_page": 30,
+            "page": random.randint(1, 3)
+        }
+        res = requests.get("https://api.pexels.com/v1/search", headers=headers, params=params, timeout=30)
+        if not res.ok:
+            print(f"Pexels API error ({res.status_code}):", res.text)
+            continue
 
-    if img_res is None:
-        raise Exception("Failed to download image from Pollinations after 4 attempts.")
+        photos = res.json().get("photos", [])
+        unused_photos = [p for p in photos if p["id"] not in used_photo_ids]
+        if unused_photos:
+            selected_photo = random.choice(unused_photos)
+            break
 
-    with open("raw_pin.jpg", "wb") as f:
+    if not selected_photo:
+        raise Exception("No unused Pexels photos found!")
+
+    photo_id = selected_photo["id"]
+    photo_url = selected_photo["src"].get("portrait") or selected_photo["src"].get("large2x")
+    print(f"Selected Pexels Photo ID: {photo_id}")
+
+    img_res = requests.get(photo_url, timeout=60)
+    img_res.raise_for_status()
+    with open("pin.jpg", "wb") as f:
         f.write(img_res.content)
-
-    # قص آخر 64 بكسل من أسفل الصورة لإزالة العلامة المائية نهائياً
-    with Image.open("raw_pin.jpg") as img:
-        width, height = img.size
-        cropped = img.crop((0, 0, width, height - 64))
-        cropped.save("pin.jpg", "JPEG", quality=95)
 
     print("Uploading image to Cloudinary...")
     cloudinary.config(cloudinary_url=CLOUDINARY_URL)
     upload_res = cloudinary.uploader.upload("pin.jpg", folder="pinterest_pins")
     direct_url = upload_res["secure_url"]
     print("Direct Image URL:", direct_url)
-    return direct_url
+    return direct_url, photo_id
 
 def get_pinterest_board_id():
     url = "https://api.buffer.com"
@@ -231,7 +236,7 @@ def publish_to_buffer(title, full_text, image_url, board_id):
 
 if __name__ == "__main__":
     history = load_history()
-    project = generate_project_idea(history)
+    project = generate_project_idea(history["projects"])
     print("Generated Project:", project["title"])
 
     components_text = "\n".join([f"• {item}" for item in project["components"]])
@@ -244,11 +249,15 @@ if __name__ == "__main__":
     )
 
     board_id = get_pinterest_board_id()
-    direct_image_url = generate_and_host_image(project["image_prompt"])
+    direct_image_url, photo_id = fetch_pexels_and_host_image(
+        project.get("pexels_query", "arduino circuit board"),
+        history["photo_ids"]
+    )
 
     if publish_to_buffer(project["title"], full_pin_text, direct_image_url, board_id):
-        history.append(project["title"])
+        history["projects"].append(project["title"])
+        history["photo_ids"].append(photo_id)
         save_history(history)
-        print("Project saved to history.json!")
+        print("Project & Photo ID saved to history.json!")
     else:
         raise Exception("Failed to publish to Buffer, history not updated.")
