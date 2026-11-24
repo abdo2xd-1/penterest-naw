@@ -1,7 +1,9 @@
 import os
 import re
+import time
 import json
 import random
+import urllib.parse
 import requests
 import cloudinary
 import cloudinary.uploader
@@ -76,7 +78,7 @@ def generate_project_idea(past_projects):
                     "- 'components': An array of 4 short electronic components (e.g. 'Arduino Uno', 'OLED Display', 'Ultrasonic Sensor', 'Jumper Wires').\n"
                     "- 'cta': 1 short sentence encouraging to Save & Follow for daily DIY electronics (max 70 chars).\n"
                     "- 'hashtags': 4 high-ranking hashtags (e.g. '#DIYElectronics #Arduino #ESP32 #Robotics').\n"
-                    f"- 'image_prompt': Write a sharp, realistic macro DSLR photograph prompt (shot on 85mm lens, shallow depth of field, f/2.8) of the real DIY electronics project featuring a blue Arduino Uno or ESP32 circuit board, green PCB sensor modules, colorful rainbow jumper wires, and a tiny glowing red/blue indicator LED, {selected_style}. Ultra-sharp focus on the electronic pins and chips, photorealistic, no text, no watermark, no dark sci-fi glow."
+                    f"- 'image_prompt': Write a sharp, realistic macro DSLR photograph prompt (shot on 85mm lens, shallow depth of field) of the real DIY electronics project featuring a blue Arduino Uno or ESP32 circuit board, green PCB sensor modules, colorful rainbow jumper wires, and a tiny glowing red indicator LED, {selected_style}. Ultra-sharp focus on the electronic pins and chips, photorealistic, no text, no watermark. Do not use forward slashes."
                 )
             }
         ]
@@ -99,22 +101,33 @@ def generate_project_idea(past_projects):
     raise Exception("Failed to generate valid project JSON from Groq after 3 attempts.")
 
 def generate_and_host_image(image_prompt):
-    prompt_encoded = requests.utils.quote(image_prompt)
-    seed = random.randint(1, 999999)
-    # مقاس 768x1216 (مضاعفات 64 لموديل flux) ومع قص 64 بكسل من تحت ترجع 768x1152 بالظبط
-    pollinations_url = (
-        f"https://image.pollinations.ai/prompt/{prompt_encoded}"
-        f"?width=768&height=1216&model=flux&enhance=true&seed={seed}&nologo=true"
-    )
-    
-    print("Downloading generated image from Pollinations (Flux)...")
+    # تنظيف البرومبت وتشفير كل الرموز بما فيها "/"
+    clean_prompt = image_prompt.replace("/", " ").strip()
+    prompt_encoded = urllib.parse.quote(clean_prompt, safe="")
     headers = {"User-Agent": "Mozilla/5.0"}
-    img_res = requests.get(pollinations_url, headers=headers, timeout=90)
-    img_res.raise_for_status()
 
-    content_type = img_res.headers.get("Content-Type", "")
-    if "image" not in content_type:
-        raise Exception(f"Pollinations did not return an image! Content-Type: {content_type}")
+    img_res = None
+    for attempt in range(4):
+        seed = random.randint(1, 999999)
+        model_param = "&model=flux" if attempt < 3 else ""
+        pollinations_url = (
+            f"https://image.pollinations.ai/prompt/{prompt_encoded}"
+            f"?width=768&height=1216{model_param}&seed={seed}&nologo=true"
+        )
+        print(f"Downloading image from Pollinations (Attempt {attempt + 1})...")
+        try:
+            res = requests.get(pollinations_url, headers=headers, timeout=90)
+            content_type = res.headers.get("Content-Type", "")
+            if res.ok and "image" in content_type:
+                img_res = res
+                break
+            print(f"Pollinations returned {res.status_code} ({content_type}), retrying...")
+        except Exception as e:
+            print(f"Pollinations error on attempt {attempt + 1}: {e}")
+        time.sleep(6)
+
+    if img_res is None:
+        raise Exception("Failed to download image from Pollinations after 4 attempts.")
 
     with open("raw_pin.jpg", "wb") as f:
         f.write(img_res.content)
