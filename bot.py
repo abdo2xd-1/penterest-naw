@@ -4,12 +4,12 @@ import random
 import requests
 import cloudinary
 import cloudinary.uploader
-from PIL import Image
 
 GROQ_API_KEY = os.environ["GROQ_API_KEY"]
 BUFFER_API_KEY = os.environ["BUFFER_API_KEY"]
 BUFFER_CHANNEL_ID = os.environ["BUFFER_CHANNEL_ID"]
 CLOUDINARY_URL = os.environ["CLOUDINARY_URL"]
+HF_TOKEN = os.environ["HF_TOKEN"]
 HISTORY_FILE = "history.json"
 
 CATEGORIES = [
@@ -23,6 +23,12 @@ CATEGORIES = [
     "Retro Mini Gaming Consoles",
     "Bluetooth Audio & DIY Amplifiers",
     "Gesture-Controlled Gadgets"
+]
+
+PHOTO_STYLES = [
+    "placed on a vibrant solid yellow studio background, bright even studio lighting, clean commercial product photography",
+    "placed on a warm wooden workbench, natural bright daylight, soft blurred background bokeh, authentic maker photography",
+    "placed on a clean minimalist teal matte desk, crisp bright studio lighting, macro product photography"
 ]
 
 def load_history():
@@ -43,6 +49,7 @@ def generate_project_idea(past_projects):
     }
     
     selected_category = random.choice(CATEGORIES)
+    selected_style = random.choice(PHOTO_STYLES)
     avoid_list = ", ".join(past_projects[-50:]) if past_projects else "None"
 
     payload = {
@@ -65,10 +72,10 @@ def generate_project_idea(past_projects):
                     "Return JSON with exact keys:\n"
                     "- 'title': SEO-optimized catchy title with strong keywords (max 80 chars).\n"
                     "- 'hook': 1 short SEO-rich sentence explaining the project (max 110 chars).\n"
-                    "- 'components': An array of 4 short electronic components (e.g. 'ESP32', 'OLED Display', 'Ultrasonic Sensor', 'Jumper Wires').\n"
+                    "- 'components': An array of 4 short electronic components (e.g. 'Arduino Uno', 'OLED Display', 'Ultrasonic Sensor', 'Jumper Wires').\n"
                     "- 'cta': 1 short sentence encouraging to Save & Follow for daily DIY electronics (max 70 chars).\n"
                     "- 'hashtags': 4 high-ranking hashtags (e.g. '#DIYElectronics #Arduino #ESP32 #Robotics').\n"
-                    "- 'image_prompt': Close-up photorealistic vertical 2:3 photo of a real DIY electronics project on a maker's workbench, clearly showing Arduino/ESP32 circuit board, colorful jumper wires, breadboard, glowing LEDs, and electronic components, sharp focus, studio lighting, no text, no watermark."
+                    f"- 'image_prompt': Write a sharp, realistic macro DSLR photograph prompt (shot on 85mm lens, shallow depth of field, f/2.8) of the real DIY electronics project featuring a blue Arduino Uno or ESP32 circuit board, green PCB sensor modules, colorful rainbow jumper wires, and a tiny glowing red/blue indicator LED, {selected_style}. Ultra-sharp focus on the electronic pins and chips, photorealistic, no text, no watermark, no dark sci-fi glow."
                 )
             }
         ]
@@ -81,28 +88,20 @@ def generate_project_idea(past_projects):
     return json.loads(content)
 
 def generate_and_host_image(image_prompt):
-    prompt_encoded = requests.utils.quote(image_prompt)
-    seed = random.randint(1, 999999)
-    # نطلب ارتفاع 1570 عشان لما نقص 70 بكسل من تحت ترجع 1000x1500 بالظبط
-    pollinations_url = f"https://image.pollinations.ai/prompt/{prompt_encoded}?width=1000&height=1570&model=flux&seed={seed}&nologo=true"
-    
-    print("Downloading generated image...")
-    headers = {"User-Agent": "Mozilla/5.0"}
-    img_res = requests.get(pollinations_url, headers=headers, timeout=60)
-    img_res.raise_for_status()
+    print("Generating high-quality image with Hugging Face FLUX...")
+    hf_url = "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell"
+    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+    payload = {
+        "inputs": image_prompt,
+        "parameters": {"width": 768, "height": 1152}
+    }
 
-    content_type = img_res.headers.get("Content-Type", "")
-    if "image" not in content_type:
-        raise Exception(f"Pollinations did not return an image! Content-Type: {content_type}")
+    img_res = requests.post(hf_url, headers=headers, json=payload, timeout=90)
+    if not img_res.ok:
+        raise Exception(f"HF API Error: {img_res.status_code} - {img_res.text}")
 
-    with open("raw_pin.jpg", "wb") as f:
+    with open("pin.jpg", "wb") as f:
         f.write(img_res.content)
-
-    # قص آخر 70 بكسل من أسفل الصورة لإزالة العلامة المائية نهائياً
-    with Image.open("raw_pin.jpg") as img:
-        width, height = img.size
-        cropped = img.crop((0, 0, width, height - 70))
-        cropped.save("pin.jpg", "JPEG", quality=95)
 
     print("Uploading image to Cloudinary...")
     cloudinary.config(cloudinary_url=CLOUDINARY_URL)
