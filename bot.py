@@ -4,6 +4,7 @@ import random
 import requests
 import cloudinary
 import cloudinary.uploader
+from huggingface_hub import InferenceClient
 
 GROQ_API_KEY = os.environ["GROQ_API_KEY"]
 BUFFER_API_KEY = os.environ["BUFFER_API_KEY"]
@@ -89,19 +90,14 @@ def generate_project_idea(past_projects):
 
 def generate_and_host_image(image_prompt):
     print("Generating high-quality image with Hugging Face FLUX...")
-    hf_url = "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell"
-    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
-    payload = {
-        "inputs": image_prompt,
-        "parameters": {"width": 768, "height": 1152}
-    }
-
-    img_res = requests.post(hf_url, headers=headers, json=payload, timeout=90)
-    if not img_res.ok:
-        raise Exception(f"HF API Error: {img_res.status_code} - {img_res.text}")
-
-    with open("pin.jpg", "wb") as f:
-        f.write(img_res.content)
+    client = InferenceClient(provider="auto", api_key=HF_TOKEN)
+    image = client.text_to_image(
+        image_prompt,
+        model="black-forest-labs/FLUX.1-schnell",
+        width=768,
+        height=1152
+    )
+    image.save("pin.jpg", "JPEG", quality=95)
 
     print("Uploading image to Cloudinary...")
     cloudinary.config(cloudinary_url=CLOUDINARY_URL)
