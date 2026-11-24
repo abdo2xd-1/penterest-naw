@@ -5,13 +5,12 @@ import random
 import requests
 import cloudinary
 import cloudinary.uploader
-from huggingface_hub import InferenceClient
+from PIL import Image
 
 GROQ_API_KEY = os.environ["GROQ_API_KEY"]
 BUFFER_API_KEY = os.environ["BUFFER_API_KEY"]
 BUFFER_CHANNEL_ID = os.environ["BUFFER_CHANNEL_ID"]
 CLOUDINARY_URL = os.environ["CLOUDINARY_URL"]
-HF_TOKEN = os.environ["HF_TOKEN"]
 HISTORY_FILE = "history.json"
 
 CATEGORIES = [
@@ -100,15 +99,31 @@ def generate_project_idea(past_projects):
     raise Exception("Failed to generate valid project JSON from Groq after 3 attempts.")
 
 def generate_and_host_image(image_prompt):
-    print("Generating high-quality image with Hugging Face FLUX...")
-    client = InferenceClient(provider="auto", api_key=HF_TOKEN)
-    image = client.text_to_image(
-        image_prompt,
-        model="black-forest-labs/FLUX.1-schnell",
-        width=768,
-        height=1152
+    prompt_encoded = requests.utils.quote(image_prompt)
+    seed = random.randint(1, 999999)
+    # مقاس 768x1216 (مضاعفات 64 لموديل flux) ومع قص 64 بكسل من تحت ترجع 768x1152 بالظبط
+    pollinations_url = (
+        f"https://image.pollinations.ai/prompt/{prompt_encoded}"
+        f"?width=768&height=1216&model=flux&enhance=true&seed={seed}&nologo=true"
     )
-    image.save("pin.jpg", "JPEG", quality=95)
+    
+    print("Downloading generated image from Pollinations (Flux)...")
+    headers = {"User-Agent": "Mozilla/5.0"}
+    img_res = requests.get(pollinations_url, headers=headers, timeout=90)
+    img_res.raise_for_status()
+
+    content_type = img_res.headers.get("Content-Type", "")
+    if "image" not in content_type:
+        raise Exception(f"Pollinations did not return an image! Content-Type: {content_type}")
+
+    with open("raw_pin.jpg", "wb") as f:
+        f.write(img_res.content)
+
+    # قص آخر 64 بكسل من أسفل الصورة لإزالة العلامة المائية نهائياً
+    with Image.open("raw_pin.jpg") as img:
+        width, height = img.size
+        cropped = img.crop((0, 0, width, height - 64))
+        cropped.save("pin.jpg", "JPEG", quality=95)
 
     print("Uploading image to Cloudinary...")
     cloudinary.config(cloudinary_url=CLOUDINARY_URL)
