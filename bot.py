@@ -1,10 +1,13 @@
 import os
 import json
 import requests
+import cloudinary
+import cloudinary.uploader
 
 GROQ_API_KEY = os.environ["GROQ_API_KEY"]
 BUFFER_API_KEY = os.environ["BUFFER_API_KEY"]
 BUFFER_CHANNEL_ID = os.environ["BUFFER_CHANNEL_ID"]
+CLOUDINARY_URL = os.environ["CLOUDINARY_URL"]
 HISTORY_FILE = "history.json"
 
 def load_history():
@@ -70,21 +73,17 @@ def generate_and_host_image(image_prompt):
     img_res = requests.get(pollinations_url, headers=headers, timeout=60)
     img_res.raise_for_status()
 
+    content_type = img_res.headers.get("Content-Type", "")
+    if "image" not in content_type:
+        raise Exception(f"Pollinations did not return an image! Content-Type: {content_type}")
+
     with open("pin.jpg", "wb") as f:
         f.write(img_res.content)
 
-    print("Uploading image to tmpfiles.org...")
-    with open("pin.jpg", "rb") as f:
-        upload_res = requests.post(
-            "https://tmpfiles.org/api/v1/upload",
-            files={"file": ("pin.jpg", f, "image/jpeg")},
-            headers=headers,
-            timeout=60
-        )
-    upload_res.raise_for_status()
-    
-    page_url = upload_res.json()["data"]["url"]
-    direct_url = page_url.replace("tmpfiles.org/", "tmpfiles.org/dl/")
+    print("Uploading image to Cloudinary...")
+    cloudinary.config(cloudinary_url=CLOUDINARY_URL)
+    upload_res = cloudinary.uploader.upload("pin.jpg", folder="pinterest_pins")
+    direct_url = upload_res["secure_url"]
     print("Direct Image URL:", direct_url)
     return direct_url
 
