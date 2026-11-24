@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import random
 import requests
@@ -54,15 +55,15 @@ def generate_project_idea(past_projects):
     avoid_list = ", ".join(past_projects[-50:]) if past_projects else "None"
 
     payload = {
-        "model": "llama-3.3-70b-versatile",
+        "model": "openai/gpt-oss-120b",
         "temperature": 0.7,
-        "response_format": {"type": "json_object"},
         "messages": [
             {
                 "role": "system",
                 "content": (
                     "You are a Pinterest SEO specialist and DIY electronics expert. "
-                    "Always respond with valid JSON only. Keep all text concise so the total description stays strictly under 450 characters."
+                    "Respond ONLY with a single raw valid JSON object (no markdown, no extra text). "
+                    "Keep all text concise so the total description stays strictly under 450 characters."
                 )
             },
             {
@@ -85,10 +86,18 @@ def generate_project_idea(past_projects):
     for attempt in range(3):
         res = requests.post(url, headers=headers, json=payload, timeout=30)
         if res.ok:
-            content = res.json()["choices"][0]["message"]["content"]
-            return json.loads(content)
-        print(f"Groq Attempt {attempt + 1} failed:", res.text)
-    res.raise_for_status()
+            content = res.json()["choices"][0]["message"]["content"].strip()
+            match = re.search(r"\{.*\}", content, re.DOTALL)
+            if match:
+                try:
+                    return json.loads(match.group(0))
+                except json.JSONDecodeError as e:
+                    print(f"JSON parse error on attempt {attempt + 1}:", e)
+            else:
+                print(f"No JSON found on attempt {attempt + 1}:", content)
+        else:
+            print(f"Groq Attempt {attempt + 1} failed:", res.text)
+    raise Exception("Failed to generate valid project JSON from Groq after 3 attempts.")
 
 def generate_and_host_image(image_prompt):
     print("Generating high-quality image with Hugging Face FLUX...")
