@@ -2,7 +2,7 @@ name: Electronics Pinterest Bot (Groq + HF FLUX + Cloudinary + Buffer)
 
 on:
   schedule:
-    - cron: '0 10,18 * * *'
+    - cron: '0 */2 * * *'
   workflow_dispatch:
 
 permissions:
@@ -22,7 +22,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install requests cloudinary
+        run: pip install requests cloudinary huggingface_hub pillow
 
       - name: Run Pinterest Bot
         env:
