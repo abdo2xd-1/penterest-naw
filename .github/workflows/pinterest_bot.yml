@@ -1,8 +1,8 @@
-name: Electronics Pinterest Bot (Groq + Buffer + SEO)
+name: Electronics Pinterest Bot (Groq + Cloudinary + Buffer)
 
 on:
   schedule:
-    - cron: '0 10,18 * * *'
+    - cron: '0 5,0 * * *'
   workflow_dispatch:
 
 permissions:
@@ -22,13 +22,14 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install requests
+        run: pip install requests cloudinary
 
       - name: Run Pinterest Bot
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
           BUFFER_CHANNEL_ID: ${{ secrets.BUFFER_CHANNEL_ID }}
+          CLOUDINARY_URL: ${{ secrets.CLOUDINARY_URL }}
         run: python bot.py
 
       - name: Save Project History
