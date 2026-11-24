@@ -54,8 +54,8 @@ def generate_project_idea(past_projects):
     avoid_list = ", ".join(past_projects[-50:]) if past_projects else "None"
 
     payload = {
-        "model": "openai/gpt-oss-120b",
-        "temperature": 0.9,
+        "model": "llama-3.3-70b-versatile",
+        "temperature": 0.7,
         "response_format": {"type": "json_object"},
         "messages": [
             {
@@ -81,12 +81,14 @@ def generate_project_idea(past_projects):
             }
         ]
     }
-    res = requests.post(url, headers=headers, json=payload, timeout=30)
-    if not res.ok:
-        print("Groq API Error:", res.text)
+
+    for attempt in range(3):
+        res = requests.post(url, headers=headers, json=payload, timeout=30)
+        if res.ok:
+            content = res.json()["choices"][0]["message"]["content"]
+            return json.loads(content)
+        print(f"Groq Attempt {attempt + 1} failed:", res.text)
     res.raise_for_status()
-    content = res.json()["choices"][0]["message"]["content"]
-    return json.loads(content)
 
 def generate_and_host_image(image_prompt):
     print("Generating high-quality image with Hugging Face FLUX...")
