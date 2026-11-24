@@ -37,8 +37,7 @@ def generate_project_idea(past_projects):
                 "role": "system",
                 "content": (
                     "You are a Pinterest SEO specialist and DIY electronics expert. "
-                    "Always respond with valid JSON only. Focus on high-search-volume keywords "
-                    "like Arduino, ESP32, DIY electronics, circuit, robotics, smart home, and gadgets."
+                    "Always respond with valid JSON only. Keep all text concise so the total description stays strictly under 450 characters."
                 )
             },
             {
@@ -47,11 +46,11 @@ def generate_project_idea(past_projects):
                     f"Generate 1 unique, viral DIY electronics project idea for a Pinterest Pin. "
                     f"DO NOT repeat or make anything similar to these past projects: [{avoid_list}].\n\n"
                     "Return JSON with exact keys:\n"
-                    "- 'title': SEO-optimized catchy title with strong keywords (max 85 chars).\n"
-                    "- 'hook': 1-2 engaging SEO-rich sentences explaining what the project does and why it's awesome.\n"
-                    "- 'components': An array of 4 to 6 exact electronic components needed (e.g. 'ESP32 Board', 'HC-SR04 Ultrasonic Sensor').\n"
-                    "- 'cta': A friendly, engaging sentence encouraging the viewer to Save this pin and Follow the profile for daily DIY electronics ideas.\n"
-                    "- 'hashtags': A string of 5 to 7 high-ranking Pinterest hashtags (e.g. '#DIYElectronics #ArduinoProjects #ESP32').\n"
+                    "- 'title': SEO-optimized catchy title with strong keywords (max 80 chars).\n"
+                    "- 'hook': 1 short SEO-rich sentence explaining the project (max 110 chars).\n"
+                    "- 'components': An array of 4 short electronic components (e.g. 'ESP32', 'Soil Sensor', 'Relay', '5V Pump').\n"
+                    "- 'cta': 1 short sentence encouraging to Save & Follow for daily DIY electronics (max 70 chars).\n"
+                    "- 'hashtags': 4 high-ranking hashtags (e.g. '#DIYElectronics #Arduino #ESP32 #Robotics').\n"
                     "- 'image_prompt': Detailed visual description for a vertical 2:3 aesthetic Pinterest photo of the finished electronics project on a clean workbench, studio lighting, photorealistic, no text."
                 )
             }
@@ -87,7 +86,37 @@ def generate_and_host_image(image_prompt):
     print("Direct Image URL:", direct_url)
     return direct_url
 
-def publish_to_buffer(full_text, image_url):
+def get_pinterest_board_id():
+    """جلب رقم أول بورد في حساب Pinterest أوتوماتيك من Buffer"""
+    url = "https://api.buffer.com"
+    headers = {
+        "Authorization": f"Bearer {BUFFER_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    query = f"""
+    query {{
+      channel(input: {{ id: "{BUFFER_CHANNEL_ID}" }}) {{
+        metadata {{
+          ... on PinterestMetadata {{
+            boards {{
+              serviceId
+            }}
+          }}
+        }}
+      }}
+    }}
+    """
+    res = requests.post(url, headers=headers, json={"query": query}, timeout=30)
+    res.raise_for_status()
+    data = res.json()
+    boards = data.get("data", {}).get("channel", {}).get("metadata", {}).get("boards", [])
+    if not boards:
+        raise Exception(f"No Pinterest boards found in Buffer! Response: {data}")
+    board_id = boards[0]["serviceId"]
+    print("Selected Pinterest Board ID:", board_id)
+    return board_id
+
+def publish_to_buffer(title, full_text, image_url, board_id):
     url = "https://api.buffer.com"
     headers = {
         "Authorization": f"Bearer {BUFFER_API_KEY}",
@@ -111,9 +140,15 @@ def publish_to_buffer(full_text, image_url):
     variables = {
         "input": {
             "channelId": BUFFER_CHANNEL_ID,
-            "text": full_text,
+            "text": full_text[:495],
             "schedulingType": "automatic",
             "mode": "addToQueue",
+            "metadata": {
+                "pinterest": {
+                    "boardServiceId": board_id,
+                    "title": title[:100]
+                }
+            },
             "assets": [
                 {
                     "image": {
@@ -143,17 +178,17 @@ if __name__ == "__main__":
 
     components_text = "\n".join([f"• {item}" for item in project["components"]])
     full_pin_text = (
-        f"{project['title']}\n\n"
         f"{project['hook']}\n\n"
-        f"🔧 Components Needed:\n"
+        f"🔧 Parts:\n"
         f"{components_text}\n\n"
         f"👉 {project['cta']}\n\n"
         f"{project['hashtags']}"
     )
 
+    board_id = get_pinterest_board_id()
     direct_image_url = generate_and_host_image(project["image_prompt"])
 
-    if publish_to_buffer(full_pin_text, direct_image_url):
+    if publish_to_buffer(project["title"], full_pin_text, direct_image_url, board_id):
         history.append(project["title"])
         save_history(history)
         print("Project saved to history.json!")
