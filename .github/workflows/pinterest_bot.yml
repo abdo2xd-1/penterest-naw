@@ -1,4 +1,4 @@
-name: Electronics Pinterest Bot (Groq + HF FLUX + Cloudinary + Buffer)
+name: Electronics Pinterest Bot (Groq + Pexels + Cloudinary + Buffer)
 
 on:
   schedule:
@@ -22,7 +22,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install requests cloudinary huggingface_hub pillow
+        run: pip install requests cloudinary
 
       - name: Run Pinterest Bot
         env:
@@ -30,7 +30,7 @@ jobs:
           BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
           BUFFER_CHANNEL_ID: ${{ secrets.BUFFER_CHANNEL_ID }}
           CLOUDINARY_URL: ${{ secrets.CLOUDINARY_URL }}
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
         run: python bot.py
 
       - name: Save Project History
