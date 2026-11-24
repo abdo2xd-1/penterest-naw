@@ -4,10 +4,12 @@
     "Pocket Retro Arcade: Build a Handheld NES‑Clone with ESP32",
     "Game Boy‑Style Mini Console with Pi Pico",
     "Ultrasonic Radar Door Guard: Smart Motion Alarm with ESP32",
-    "Bluetooth‑Controlled RGB LED Matrix Audio Visualizer – Beat‑Sync Wall"
+    "Bluetooth‑Controlled RGB LED Matrix Audio Visualizer – Beat‑Sync Wall",
+    "Solar-Powered Power Bank with Smart Charge Indicator"
   ],
   "photo_ids": [
     3921632,
-    12320170
+    12320170,
+    27637329
   ]
 }
