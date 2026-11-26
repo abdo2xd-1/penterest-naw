@@ -8,7 +8,8 @@
     "Solar-Powered Power Bank with Smart Charge Indicator",
     "Bluetooth Tube Amp: Vintage Sound Meets Wireless Streaming",
     "Mini AI-Powered RC Car with Obstacle-Avoidance & Voice Control",
-    "Magnetic‑Steer Mini Tank Robot – Arduino Nano DIY"
+    "Magnetic‑Steer Mini Tank Robot – Arduino Nano DIY",
+    "Gesture‑Controlled Mini RC Car with MPU6050 & Bluetooth – Fun DIY Robotics"
   ],
   "photo_ids": [
     3921632,
@@ -16,6 +17,7 @@
     27637329,
     4087993,
     35686438,
-    8566469
+    8566469,
+    9242280
   ]
 }
