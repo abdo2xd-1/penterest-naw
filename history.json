@@ -13,7 +13,8 @@
     "Solar‑Powered Mini RC Car with Programmable LED Light Show – DIY",
     "Retro Cassette‑Case Handheld Gaming Console – ESP8266 Mini Arcade",
     "DIY IR‑Remote Mini RC Car with Neon Light Trail – Fast & Fun!",
-    "Biometric RFID Dual‑Auth Smart Lock with ESP32‑Cam"
+    "Biometric RFID Dual‑Auth Smart Lock with ESP32‑Cam",
+    "Voice-Activated Smart Curtain Controller with ESP8266 Relay"
   ],
   "photo_ids": [
     3921632,
@@ -26,6 +27,7 @@
     35686435,
     22764753,
     8294600,
-    10084204
+    10084204,
+    35686439
   ]
 }
